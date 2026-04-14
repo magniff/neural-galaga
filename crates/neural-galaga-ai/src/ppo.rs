@@ -20,9 +20,9 @@ use crate::model::{CheatsActorCritic, CheatsActorCriticConfig};
 const SHIELD_PENALTY_ACTIVATION_REWARD: f64 = 120.0;
 
 // --- Hyperparameters ---
-const NUM_ENVS: usize = 512;
+const NUM_ENVS: usize = 2048;
 const ROLLOUT_STEPS: usize = 128;
-const MINIBATCH_SIZE: usize = 2048;
+const MINIBATCH_SIZE: usize = 4096;
 const PPO_EPOCHS: usize = 4;
 const GAMMA: f32 = 0.99;
 const GAE_LAMBDA: f32 = 0.95;
@@ -42,8 +42,9 @@ const CHECKPOINT_DIR: &str = "checkpoints/cheats";
 const CSV_LOG_PATH: &str = "checkpoints/cheats/training_log.csv";
 
 /// A single transition stored during rollout collection.
+/// Observations are kept in a separate flat buffer to avoid per-step `Vec`
+/// allocations — see `rollout_obs` in `train`.
 struct Transition {
-    obs: Vec<f32>,
     action: usize,
     log_prob: f32,
     reward: f32,
@@ -113,6 +114,12 @@ pub fn train<B: burn::tensor::backend::AutodiffBackend>(resume_from: Option<Stri
         .collect();
     let mut current_obs: Vec<Vec<f32>> = envs.iter_mut().map(|e| e.reset()).collect();
 
+    // Flat observation buffer reused across rollouts. Layout:
+    // rollout_obs[(env * ROLLOUT_STEPS + step) * STACKED_OBS_SIZE + i] — env-major
+    // so that flattening for PPO minibatches is a linear scan.
+    let total_transitions = NUM_ENVS * ROLLOUT_STEPS;
+    let mut rollout_obs: Vec<f32> = vec![0.0; total_transitions * STACKED_OBS_SIZE];
+
     std::fs::create_dir_all(CHECKPOINT_DIR).expect("failed to create checkpoint dir");
 
     let csv_file = File::create(CSV_LOG_PATH).expect("failed to create training_log.csv");
@@ -138,12 +145,18 @@ pub fn train<B: burn::tensor::backend::AutodiffBackend>(resume_from: Option<Stri
             .map(|_| Vec::with_capacity(ROLLOUT_STEPS))
             .collect();
 
-        for _step in 0..ROLLOUT_STEPS {
+        for step in 0..ROLLOUT_STEPS {
             let obs_tensor = obs_to_tensor::<IB<B>>(&current_obs, &device);
             let (actions, output) = inference_model.sample_actions(obs_tensor);
 
             let log_probs_data: Vec<f32> = output.log_probs.to_data().to_vec().unwrap();
             let values_data: Vec<f32> = output.value.to_data().to_vec().unwrap();
+
+            // Stash current obs into the flat rollout buffer before env.step mutates them.
+            for (i, obs) in current_obs.iter().enumerate() {
+                let offset = (i * ROLLOUT_STEPS + step) * STACKED_OBS_SIZE;
+                rollout_obs[offset..offset + STACKED_OBS_SIZE].copy_from_slice(obs);
+            }
 
             let step_results: Vec<_> = envs
                 .par_iter_mut()
@@ -161,7 +174,6 @@ pub fn train<B: burn::tensor::backend::AutodiffBackend>(resume_from: Option<Stri
                 let value = values_data[i];
 
                 all_transitions[i].push(Transition {
-                    obs: current_obs[i].clone(),
                     action,
                     log_prob,
                     reward,
@@ -202,7 +214,6 @@ pub fn train<B: burn::tensor::backend::AutodiffBackend>(resume_from: Option<Stri
         }
 
         // Normalize advantages
-        let total_transitions = NUM_ENVS * ROLLOUT_STEPS;
         let adv_mean: f32 = env_advantages.iter().flatten().sum::<f32>() / total_transitions as f32;
         let adv_var: f32 = env_advantages
             .iter()
@@ -218,7 +229,8 @@ pub fn train<B: burn::tensor::backend::AutodiffBackend>(resume_from: Option<Stri
         }
 
         // --- Flatten all transitions into a single pool for minibatch sampling ---
-        let mut all_obs: Vec<Vec<f32>> = Vec::with_capacity(total_transitions);
+        // Observations are already laid out contiguously env-major in `rollout_obs`;
+        // transition index `i` maps to offset `i * STACKED_OBS_SIZE`.
         let mut all_actions: Vec<usize> = Vec::with_capacity(total_transitions);
         let mut all_old_lp: Vec<f32> = Vec::with_capacity(total_transitions);
         let mut all_adv: Vec<f32> = Vec::with_capacity(total_transitions);
@@ -227,7 +239,6 @@ pub fn train<B: burn::tensor::backend::AutodiffBackend>(resume_from: Option<Stri
         for env_idx in 0..NUM_ENVS {
             for step in 0..ROLLOUT_STEPS {
                 let t = &all_transitions[env_idx][step];
-                all_obs.push(t.obs.clone());
                 all_actions.push(t.action);
                 all_old_lp.push(t.log_prob);
                 all_adv.push(env_advantages[env_idx][step]);
@@ -262,10 +273,14 @@ pub fn train<B: burn::tensor::backend::AutodiffBackend>(resume_from: Option<Stri
                 let mb_indices = &indices[mb_start..mb_end];
                 let mb_size = mb_indices.len();
 
-                // Gather minibatch data
-                let mb_obs: Vec<Vec<f32>> =
-                    mb_indices.iter().map(|&i| all_obs[i].clone()).collect();
-                let obs_tensor = obs_to_tensor::<B>(&mb_obs, &device);
+                // Gather minibatch obs directly from the flat rollout buffer.
+                let mut mb_obs_data: Vec<f32> = Vec::with_capacity(mb_size * STACKED_OBS_SIZE);
+                for &idx in mb_indices.iter() {
+                    let off = idx * STACKED_OBS_SIZE;
+                    mb_obs_data.extend_from_slice(&rollout_obs[off..off + STACKED_OBS_SIZE]);
+                }
+                let obs_tensor = Tensor::<B, 1>::from_floats(mb_obs_data.as_slice(), &device)
+                    .reshape([mb_size, STACKED_OBS_SIZE]);
                 let output = model.forward(obs_tensor);
 
                 let mut action_mask_data = vec![0.0f32; mb_size * NUM_ACTIONS];

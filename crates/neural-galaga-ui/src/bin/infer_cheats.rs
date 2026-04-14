@@ -629,9 +629,6 @@ impl ApplicationHandler for App {
                         .draw_text(&mut s.fb, "MUTE", 190.0, 2.0, 1.0, [1.0, 0.3, 0.3, 0.6]);
                 }
 
-                s.font
-                    .draw_text(&mut s.fb, "CHEATS", 2.0, 2.0, 1.0, [1.0, 0.6, 0.3, 0.8]);
-
                 // Saliency overlay: draw circles around entities proportional to importance.
                 if s.show_saliency {
                     for t in &s.infer.saliency_targets {

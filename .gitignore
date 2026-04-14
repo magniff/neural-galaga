@@ -1,2 +1,3 @@
 /target
-checkpoints/update_*
+*update_*.mpk
+*venv*
