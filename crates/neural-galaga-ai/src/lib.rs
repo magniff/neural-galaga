@@ -13,7 +13,7 @@
 //! Binaries:
 //! - `train` — train the cheats model
 //!
-//! The inference binary lives in `neural-galaga-realtime` (it needs the GPU/audio
+//! The inference binary lives in `neural-galaga-ui` (it needs the GPU/audio
 //! window stack), in `bin/infer_cheats.rs`.
 
 pub mod env;

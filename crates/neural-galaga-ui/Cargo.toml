@@ -1,5 +1,5 @@
 [package]
-name = "neural-galaga-realtime"
+name = "neural-galaga-ui"
 version = "0.1.0"
 edition = "2024"
 
@@ -14,14 +14,14 @@ env_logger = "0.11"
 rodio = "0.20"
 image = { version = "0.25", default-features = false, features = ["png"] }
 qrcode = "0.14"
-neural-galaga-cheats = { path = "../neural-galaga-cheats" }
+neural-galaga-ai = { path = "../neural-galaga-ai" }
 burn = { version = "0.20", features = ["wgpu"] }
 rand = "0.9"
 
 [[bin]]
-name = "neural-galaga-realtime"
+name = "play"
 path = "src/main.rs"
 
 [[bin]]
-name = "infer_cheats"
+name = "infer"
 path = "src/bin/infer_cheats.rs"

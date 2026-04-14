@@ -8,10 +8,10 @@ use winit::window::{Window, WindowId};
 
 use neural_galaga_core::session::GameSession;
 use neural_galaga_core::*;
-use neural_galaga_realtime::audio::{Audio, MusicTrack};
-use neural_galaga_realtime::game::*;
-use neural_galaga_realtime::input::*;
-use neural_galaga_realtime::render::GpuState;
+use neural_galaga_ui::audio::{Audio, MusicTrack};
+use neural_galaga_ui::game::*;
+use neural_galaga_ui::input::*;
+use neural_galaga_ui::render::GpuState;
 
 /// On a 4K display (2160px tall) we use 5x upscale (window 1440px tall).
 /// For other resolutions we scale proportionally, keeping integer multiples.
@@ -40,7 +40,7 @@ struct App {
 
 impl App {
     fn new(event_loop: &EventLoop<()>) -> Self {
-        let audio_scan = neural_galaga_realtime::audio::scan_preferred_device();
+        let audio_scan = neural_galaga_ui::audio::scan_preferred_device();
         let wgpu_instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::all(),
             flags: wgpu::InstanceFlags::default(),

@@ -90,7 +90,6 @@ pub(crate) struct Powerup {
 
 const POWERUP_FALL_SPEED: f32 = 72.0;
 const POWERUP_SIZE: f32 = 16.0;
-const POWERUP_BONUS_POINTS: i32 = 500;
 
 /// Player upgrade state — accumulated powerups.
 #[derive(Clone)]
@@ -200,14 +199,6 @@ fn apply_powerup(
 }
 
 impl PlayState {
-    pub fn new() -> Self {
-        Self::with_seed(0)
-    }
-
-    pub fn with_seed(seed: u64) -> Self {
-        Self::with_seed_and_wave(seed, 1)
-    }
-
     pub fn with_seed_and_wave(seed: u64, wave: u32) -> Self {
         let config = WaveConfig::for_wave(wave);
         Self {

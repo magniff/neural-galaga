@@ -28,10 +28,10 @@ fn main() {
     }
 
     if let Some(ref path) = resume_from {
-        log::info!("neural-galaga-cheats training starting (resuming from {path})");
+        log::info!("neural-galaga-ai training starting (resuming from {path})");
     } else {
-        log::info!("neural-galaga-cheats training starting (fresh)");
+        log::info!("neural-galaga-ai training starting (fresh)");
     }
 
-    neural_galaga_cheats::ppo::train::<burn::backend::Autodiff<burn::backend::Wgpu>>(resume_from);
+    neural_galaga_ai::ppo::train::<burn::backend::Autodiff<burn::backend::Wgpu>>(resume_from);
 }

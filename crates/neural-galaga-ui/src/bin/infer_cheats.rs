@@ -8,7 +8,7 @@
 //! influenced the agent's action choice.
 //!
 //! Usage:
-//!   cargo run -p neural-galaga-realtime --bin infer_cheats --release -- --model checkpoints/cheats/best
+//!   cargo run -p neural-galaga-ui --bin infer_cheats --release -- --model checkpoints/cheats/best
 
 use std::sync::Arc;
 use std::time::Instant;
@@ -22,9 +22,9 @@ use winit::event::{ElementState, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
-use neural_galaga_cheats::env::{FRAME_SKIP, STACKED_OBS_SIZE};
-use neural_galaga_cheats::model::{CheatsActorCritic, CheatsActorCriticConfig};
-use neural_galaga_cheats::obs::{
+use neural_galaga_ai::env::{FRAME_SKIP, STACKED_OBS_SIZE};
+use neural_galaga_ai::model::{CheatsActorCritic, CheatsActorCriticConfig};
+use neural_galaga_ai::obs::{
     ENEMIES_OFFSET, ENEMY_BULLET_SLOT_FLOATS, ENEMY_BULLETS_OFFSET, ENEMY_SLOT_FLOATS,
     NUM_ENEMY_BULLET_SLOTS, NUM_ENEMY_SLOTS, NUM_PLAYER_BULLET_SLOTS, NUM_POWERUP_SLOTS,
     NUM_SHOTGUN_SLOTS, OBS_SIZE, PLAYER_BULLET_SLOT_FLOATS, PLAYER_BULLETS_OFFSET,
@@ -32,14 +32,14 @@ use neural_galaga_cheats::obs::{
 };
 use neural_galaga_core::session::GameSession;
 use neural_galaga_core::*;
-use neural_galaga_realtime::audio::{self, Audio, MusicTrack};
-use neural_galaga_realtime::game::*;
-use neural_galaga_realtime::input::{self, *};
-use neural_galaga_realtime::render::GpuState;
+use neural_galaga_ui::audio::{self, Audio, MusicTrack};
+use neural_galaga_ui::game::*;
+use neural_galaga_ui::input::{self, *};
+use neural_galaga_ui::render::GpuState;
 
 type B = Autodiff<Wgpu>;
 type IB = Wgpu;
-const NUM_ACTIONS: usize = neural_galaga_cheats::NUM_ACTIONS;
+const NUM_ACTIONS: usize = neural_galaga_ai::NUM_ACTIONS;
 
 const REFERENCE_HEIGHT: u32 = 2160;
 const REFERENCE_UPSCALE: u32 = 5;
