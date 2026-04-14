@@ -1,3 +1,4 @@
 /target
 *update_*.mpk
 *venv*
+*training_log.csv
