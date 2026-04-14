@@ -1,0 +1,16 @@
+[package]
+name = "neural-galaga-cheats"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+neural-galaga-core = { path = "../neural-galaga-core" }
+burn = { version = "0.20", features = ["autodiff", "wgpu", "train"] }
+log = "0.4"
+env_logger = "0.11"
+rand = "0.9"
+rayon = "1"
+
+[[bin]]
+name = "train"
+path = "src/bin/train.rs"

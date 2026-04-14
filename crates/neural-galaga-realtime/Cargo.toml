@@ -1,0 +1,27 @@
+[package]
+name = "neural-galaga-realtime"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+neural-galaga-core = { path = "../neural-galaga-core" }
+wgpu = "29"
+winit = "0.30"
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+rodio = "0.20"
+image = { version = "0.25", default-features = false, features = ["png"] }
+qrcode = "0.14"
+neural-galaga-cheats = { path = "../neural-galaga-cheats" }
+burn = { version = "0.20", features = ["wgpu"] }
+rand = "0.9"
+
+[[bin]]
+name = "neural-galaga-realtime"
+path = "src/main.rs"
+
+[[bin]]
+name = "infer_cheats"
+path = "src/bin/infer_cheats.rs"

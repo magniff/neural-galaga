@@ -1,0 +1,7 @@
+[workspace]
+members = [
+    "crates/neural-galaga-core",
+    "crates/neural-galaga-realtime",
+    "crates/neural-galaga-cheats",
+]
+resolver = "2"
