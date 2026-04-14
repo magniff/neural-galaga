@@ -1,13 +1,6 @@
 use crate::constants::*;
 use crate::shield::Shield;
 
-/// Entry pattern for a wave.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum EntryPattern {
-    /// Two parallel streams arcing left/right (current default).
-    DualArc,
-}
-
 /// Configuration for a single wave.
 #[derive(Clone, Debug)]
 pub struct WaveConfig {
@@ -15,8 +8,6 @@ pub struct WaveConfig {
     pub wave: u32,
     /// Enemy class for each row (index 0 = top row).
     pub row_classes: [EnemyClass; ENEMY_ROWS],
-    /// Entry pattern.
-    pub pattern: EntryPattern,
     /// Number of rows (from bottom) that get shields.
     pub shielded_rows: usize,
 }
@@ -60,7 +51,6 @@ impl WaveConfig {
         Self {
             wave,
             row_classes,
-            pattern: EntryPattern::DualArc,
             shielded_rows,
         }
     }

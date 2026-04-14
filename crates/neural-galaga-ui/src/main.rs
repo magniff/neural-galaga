@@ -228,7 +228,7 @@ impl ApplicationHandler for App {
 
                             // Check for pause
                             if s.input.just_pressed(key_escape()) {
-                                let GamePhase::Playing(mut session) = std::mem::replace(
+                                let GamePhase::Playing(session) = std::mem::replace(
                                     &mut s.phase,
                                     GamePhase::Menu { selected: 0 },
                                 ) else {
