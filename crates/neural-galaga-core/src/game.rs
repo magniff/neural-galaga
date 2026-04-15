@@ -145,6 +145,22 @@ fn aabb_overlap(ax: f32, ay: f32, aw: f32, ah: f32, bx: f32, by: f32, bw: f32, b
     ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by
 }
 
+/// Called when the active shield has just absorbed its final hit. Auto-promotes
+/// a stashed shield from inventory if one is available; otherwise leaves the
+/// player shieldless.
+fn consume_active_shield(
+    player_shield: &mut Option<Shield>,
+    inventory: &mut PowerupInventory,
+    frame_counter: u64,
+) {
+    if inventory.shield > 0 {
+        inventory.shield -= 1;
+        *player_shield = Some(Shield::new(frame_counter));
+    } else {
+        *player_shield = None;
+    }
+}
+
 /// Apply a powerup to the player. If the upgrade is already maxed, route to inventory.
 fn apply_powerup(
     kind: PowerupKind,
@@ -897,9 +913,14 @@ impl PlayState {
                     PLAYER_HEIGHT,
                 ) {
                     b.active = false;
-                    if let Some(ref mut shield) = self.player.shield {
-                        if !shield.hit() {
-                            self.player.shield = None;
+                    let shield_survived = self.player.shield.as_mut().map(|s| s.hit());
+                    if let Some(survived) = shield_survived {
+                        if !survived {
+                            consume_active_shield(
+                                &mut self.player.shield,
+                                &mut self.inventory,
+                                self.frame_counter as u64,
+                            );
                         }
                         sfx.shield_hit = true;
                         sfx.player_shield_hit = true;
@@ -930,9 +951,14 @@ impl PlayState {
                     PLAYER_HEIGHT,
                 ) {
                     b.active = false;
-                    if let Some(ref mut shield) = self.player.shield {
-                        if !shield.hit() {
-                            self.player.shield = None;
+                    let shield_survived = self.player.shield.as_mut().map(|s| s.hit());
+                    if let Some(survived) = shield_survived {
+                        if !survived {
+                            consume_active_shield(
+                                &mut self.player.shield,
+                                &mut self.inventory,
+                                self.frame_counter as u64,
+                            );
                         }
                         sfx.shield_hit = true;
                         sfx.player_shield_hit = true;
@@ -961,9 +987,14 @@ impl PlayState {
                         PLAYER_HEIGHT,
                     )
                 {
-                    if let Some(ref mut shield) = self.player.shield {
-                        if !shield.hit() {
-                            self.player.shield = None;
+                    let shield_survived = self.player.shield.as_mut().map(|s| s.hit());
+                    if let Some(survived) = shield_survived {
+                        if !survived {
+                            consume_active_shield(
+                                &mut self.player.shield,
+                                &mut self.inventory,
+                                self.frame_counter as u64,
+                            );
                         }
                         sfx.shield_hit = true;
                         sfx.player_shield_hit = true;

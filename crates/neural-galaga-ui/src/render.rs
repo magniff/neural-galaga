@@ -20,10 +20,24 @@ pub struct GpuState {
     texture: wgpu::Texture,
     upscaler_pipeline: wgpu::RenderPipeline,
     upscaler_bind_group: wgpu::BindGroup,
+    fb_width: u32,
+    fb_height: u32,
 }
 
 impl GpuState {
     pub fn new(window: Arc<Window>, instance: &wgpu::Instance) -> Self {
+        Self::new_with_fb_size(window, instance, GAME_WIDTH as u32, GAME_HEIGHT as u32)
+    }
+
+    /// Construct a `GpuState` with a custom offscreen framebuffer size.
+    /// The upscaler still stretches it to the full window via a fullscreen
+    /// triangle, so the caller is responsible for any aspect-ratio concerns.
+    pub fn new_with_fb_size(
+        window: Arc<Window>,
+        instance: &wgpu::Instance,
+        fb_width: u32,
+        fb_height: u32,
+    ) -> Self {
         let size = window.inner_size();
         let surface = instance.create_surface(window).unwrap();
 
@@ -66,8 +80,8 @@ impl GpuState {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("game_texture"),
             size: wgpu::Extent3d {
-                width: GAME_WIDTH as u32,
-                height: GAME_HEIGHT as u32,
+                width: fb_width,
+                height: fb_height,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -169,6 +183,8 @@ impl GpuState {
             texture,
             upscaler_pipeline,
             upscaler_bind_group,
+            fb_width,
+            fb_height,
         }
     }
 
@@ -182,8 +198,8 @@ impl GpuState {
 
     /// Upload an RGBA pixel buffer and upscale it to the window.
     pub fn render_framebuffer(&mut self, pixels: &[u8]) {
-        let w = GAME_WIDTH as u32;
-        let h = GAME_HEIGHT as u32;
+        let w = self.fb_width;
+        let h = self.fb_height;
 
         self.queue.write_texture(
             wgpu::TexelCopyTextureInfo {

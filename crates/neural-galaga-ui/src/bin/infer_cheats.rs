@@ -45,6 +45,11 @@ const REFERENCE_HEIGHT: u32 = 2160;
 const REFERENCE_UPSCALE: u32 = 5;
 const FONT_TTF: &[u8] = include_bytes!("../../../../assets/fonts/PressStart2P-Regular.ttf");
 
+/// Width of the network-visualization panel to the right of the game screen.
+const PANEL_WIDTH: u32 = 144;
+/// Total framebuffer width = game width + panel width.
+const TOTAL_FB_WIDTH: u32 = GAME_WIDTH as u32 + PANEL_WIDTH;
+
 fn action_index_to_list(action: usize) -> Vec<Action> {
     match action {
         0 => vec![],
@@ -69,6 +74,104 @@ fn action_index_to_list(action: usize) -> Vec<Action> {
     }
 }
 
+const ACTION_NAMES: [&str; 18] = [
+    "NOP",
+    "LEFT",
+    "RIGHT",
+    "FIRE",
+    "LEFT+FIRE",
+    "RIGHT+FIRE",
+    "BUY RATE",
+    "BUY SPEED",
+    "BUY DBL",
+    "BUY TRP",
+    "BUY SHIELD",
+    "BUY LIFE",
+    "SELL RATE",
+    "SELL SPEED",
+    "SELL DBL",
+    "SELL TRP",
+    "SELL SHIELD",
+    "SELL LIFE",
+];
+
+/// Snapshot of the policy output captured during a single inference pass.
+#[derive(Default)]
+struct NetState {
+    /// 18 action probabilities (softmax output).
+    policy: Vec<f32>,
+    /// Critic's value estimate for the current state.
+    value: f32,
+}
+
+/// Render the policy-distribution side panel: one horizontal bar per action,
+/// filled proportionally to its probability, with the action name inside the
+/// bar. The sampled action is highlighted.
+fn draw_policy_panel(fb: &mut Framebuffer, font: &mut BitmapFont, net: &NetState, action: usize) {
+    const BAR_H: u32 = 11;
+    const ROW_GAP: i32 = 2;
+    const PAD: i32 = 4;
+
+    let px = GAME_WIDTH as i32;
+    let panel_h = GAME_HEIGHT as u32;
+
+    // Background + vertical separator from the game area.
+    fb.fill_rect(px, 0, PANEL_WIDTH, panel_h, [0.04, 0.04, 0.08, 1.0]);
+    fb.fill_rect(px, 0, 1, panel_h, [0.25, 0.25, 0.35, 1.0]);
+
+    let fx = (px + PAD) as f32;
+    font.draw_text(fb, "POLICY", fx, 2.0, 1.0, [0.5, 0.8, 1.0, 1.0]);
+
+    let bar_x = px + PAD;
+    let bar_max_w = (PANEL_WIDTH as i32 - 2 * PAD) as u32;
+    let row_stride = BAR_H as i32 + ROW_GAP;
+    let bars_y0: i32 = 14;
+
+    for (i, &p) in net.policy.iter().enumerate().take(ACTION_NAMES.len()) {
+        let yy = bars_y0 + (i as i32) * row_stride;
+        // Empty lane
+        fb.fill_rect(bar_x, yy, bar_max_w, BAR_H, [0.09, 0.09, 0.14, 1.0]);
+        // Filled portion (proportional to probability)
+        let w = (p.clamp(0.0, 1.0) * bar_max_w as f32).round() as u32;
+        if w > 0 {
+            let col = if i == action {
+                [0.95, 0.65, 0.18, 1.0] // orange — chosen
+            } else {
+                [0.25, 0.55, 0.95, 0.9] // blue — others
+            };
+            fb.fill_rect(bar_x, yy, w, BAR_H, col);
+        }
+        // Action name + percentage label drawn over the bar so it's readable
+        // whether the fill is small or large.
+        let pct = (p * 100.0).round().clamp(0.0, 100.0) as u32;
+        let label = format!("{} {:>2}%", ACTION_NAMES[i], pct);
+        let text_col = if i == action {
+            [1.0, 1.0, 1.0, 1.0]
+        } else {
+            [0.85, 0.9, 1.0, 1.0]
+        };
+        font.draw_text(
+            fb,
+            &label,
+            (bar_x + 2) as f32,
+            (yy + 2) as f32,
+            1.0,
+            text_col,
+        );
+    }
+
+    // Value estimate at the bottom.
+    let value_y = bars_y0 + (ACTION_NAMES.len() as i32) * row_stride + 4;
+    font.draw_text(
+        fb,
+        &format!("V  {:+.2}", net.value),
+        fx,
+        value_y as f32,
+        1.0,
+        [0.4, 1.0, 0.5, 0.95],
+    );
+}
+
 /// An entity that the saliency overlay wants to highlight.
 struct SaliencyTarget {
     /// Screen x position (game pixels).
@@ -81,9 +184,24 @@ struct SaliencyTarget {
     color: (u8, u8, u8),
 }
 
+/// Copy the game's GAME_WIDTH × GAME_HEIGHT framebuffer into the top-left
+/// region of a wider destination buffer (leaving the right-side panel
+/// untouched).
+fn blit_game_to_fb(dst: &mut [u8], src: &[u8]) {
+    let game_w = GAME_WIDTH as usize;
+    let game_h = GAME_HEIGHT as usize;
+    let total_w = TOTAL_FB_WIDTH as usize;
+    let row_bytes = game_w * 4;
+    for row in 0..game_h {
+        let src_off = row * row_bytes;
+        let dst_off = row * total_w * 4;
+        dst[dst_off..dst_off + row_bytes].copy_from_slice(&src[src_off..src_off + row_bytes]);
+    }
+}
+
 /// Draw a circle outline on the RGBA framebuffer.
 fn draw_circle(fb: &mut [u8], cx: f32, cy: f32, radius: f32, color: (u8, u8, u8), alpha: f32) {
-    let fb_w = GAME_WIDTH as usize;
+    let fb_w = TOTAL_FB_WIDTH as usize;
     let fb_h = GAME_HEIGHT as usize;
     let steps = (radius * 6.28).max(16.0) as usize;
     for i in 0..steps {
@@ -114,6 +232,8 @@ struct InferState {
     last_action: usize,
     /// Per-entity saliency targets computed after the last action.
     saliency_targets: Vec<SaliencyTarget>,
+    /// Most recent network activations, for the viz panel.
+    net_state: NetState,
 }
 
 impl InferState {
@@ -135,6 +255,7 @@ impl InferState {
             last_result: None,
             last_action: 0,
             saliency_targets: Vec::new(),
+            net_state: NetState::default(),
         }
     }
 
@@ -175,18 +296,40 @@ impl InferState {
             .reshape([1usize, STACKED_OBS_SIZE]);
         let output = inference_model.forward(obs_tensor);
         let probs: Vec<f32> = output.log_probs.exp().to_data().to_vec().unwrap();
+        let value = output
+            .value
+            .to_data()
+            .to_vec::<f32>()
+            .unwrap()
+            .first()
+            .copied()
+            .unwrap_or(0.0);
+
+        // Top-K sampling: restrict the distribution to the K most probable
+        // actions, renormalize, and sample from that truncated distribution.
+        // This is an inference-time choice only; training stays on-policy over
+        // the full 18-way distribution.
+        const TOP_K: usize = 3;
+        let mut top: Vec<(usize, f32)> = probs.iter().copied().enumerate().collect();
+        top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        top.truncate(TOP_K);
+        let top_sum: f32 = top.iter().map(|(_, p)| *p).sum::<f32>().max(1e-8);
 
         let r: f32 = rand::random();
         let mut cumsum = 0.0;
-        let mut action = probs.len() - 1;
-        for (i, &p) in probs.iter().enumerate() {
-            cumsum += p;
+        let mut action = top.last().map(|(i, _)| *i).unwrap_or(0);
+        for (i, p) in &top {
+            cumsum += p / top_sum;
             if r < cumsum {
-                action = i;
+                action = *i;
                 break;
             }
         }
 
+        self.net_state = NetState {
+            policy: probs,
+            value,
+        };
         self.last_action = action;
         action_index_to_list(action)
     }
@@ -392,7 +535,7 @@ impl ApplicationHandler for App {
         } else {
             REFERENCE_UPSCALE
         };
-        let window_w = GAME_WIDTH as u32 * upscale;
+        let window_w = TOTAL_FB_WIDTH * upscale;
         let window_h = GAME_HEIGHT as u32 * upscale;
 
         let window_attrs = Window::default_attributes()
@@ -401,7 +544,12 @@ impl ApplicationHandler for App {
             .with_resizable(false);
 
         let window = Arc::new(event_loop.create_window(window_attrs).unwrap());
-        let gpu = GpuState::new(window.clone(), &self.wgpu_instance);
+        let gpu = GpuState::new_with_fb_size(
+            window.clone(),
+            &self.wgpu_instance,
+            TOTAL_FB_WIDTH,
+            GAME_HEIGHT as u32,
+        );
 
         let preferred = self.audio_scan.take().and_then(|h| h.join().ok()).flatten();
         let mut audio_sys = Audio::new(preferred);
@@ -420,7 +568,7 @@ impl ApplicationHandler for App {
             starfield: Starfield::new(),
             phase,
             input: InputState::new(),
-            fb: Framebuffer::new(GAME_WIDTH as u32, GAME_HEIGHT as u32),
+            fb: Framebuffer::new(TOTAL_FB_WIDTH, GAME_HEIGHT as u32),
             last_frame: Instant::now(),
             tick_accum: 0.0,
             window,
@@ -570,7 +718,7 @@ impl ApplicationHandler for App {
                         }
 
                         if let GamePhase::Playing(session) = &s.phase {
-                            s.fb.pixels.copy_from_slice(session.framebuffer());
+                            blit_game_to_fb(&mut s.fb.pixels, session.framebuffer());
 
                             if session.is_done() {
                                 let score = session.last_score();
@@ -594,7 +742,7 @@ impl ApplicationHandler for App {
                         wave,
                     } => {
                         *timer -= dt;
-                        s.fb.pixels.copy_from_slice(session.framebuffer());
+                        blit_game_to_fb(&mut s.fb.pixels, session.framebuffer());
                         render_wave_clear(&mut s.fb, &mut s.font, *wave);
                         if *timer <= 0.0 {
                             let GamePhase::WaveClear { session, .. } =
@@ -677,6 +825,13 @@ impl ApplicationHandler for App {
                     s.font
                         .draw_text(&mut s.fb, &cur_text, 2.0, cur_y, 1.0, [1.0, 1.0, 0.3, 0.8]);
                 }
+
+                draw_policy_panel(
+                    &mut s.fb,
+                    &mut s.font,
+                    &s.infer.net_state,
+                    s.infer.last_action,
+                );
 
                 s.gpu.render_framebuffer(&s.fb.pixels);
                 s.input.end_frame();
