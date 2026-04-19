@@ -305,10 +305,6 @@ impl InferState {
             .copied()
             .unwrap_or(0.0);
 
-        // Top-K sampling: restrict the distribution to the K most probable
-        // actions, renormalize, and sample from that truncated distribution.
-        // This is an inference-time choice only; training stays on-policy over
-        // the full 18-way distribution.
         const TOP_K: usize = 3;
         let mut top: Vec<(usize, f32)> = probs.iter().copied().enumerate().collect();
         top.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
